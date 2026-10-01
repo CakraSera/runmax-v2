@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Safer default for React Native native modules.
+# SDK 54+ can use isolated installs; if Metro/native linking breaks, keep this.
+allowBuilds:
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - "@scalar/client-side-rendering@0.4.7"
+  - "@scalar/hono-api-reference@0.12.8"
+  - "@scalar/types@0.22.3"
+
+nodeLinker: hoisted
