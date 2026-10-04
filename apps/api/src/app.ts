@@ -1,37 +1,29 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
-import { Scalar } from '@scalar/hono-api-reference'
+import { OpenAPIHono } from "@hono/zod-openapi";
+import { Scalar } from "@scalar/hono-api-reference";
+import { logger } from "hono/logger";
+import { cors } from "hono/cors";
+// Import routes
+import { healthRoute } from "./modules/health/route.js";
+import { authRoute } from "./modules/auth/route.js";
 
-const healthRoute = createRoute({
-  method: 'get',
-  path: '/health',
-  tags: ['System'],
-  summary: 'Health check',
-  responses: {
-    200: {
-      description: 'Service is up',
-      content: {
-        'application/json': {
-          schema: z.object({ status: z.literal('ok') }),
-        },
-      },
-    },
-  },
-})
+export const app = new OpenAPIHono();
+app.use(logger());
+app.use("*", cors());
 
-export const app = new OpenAPIHono()
-
-app.openapi(healthRoute, (c) => c.json({ status: 'ok' }))
+app.route("/health", healthRoute);
+app.route("/auth", authRoute);
+// app.route("/users", userRoutes);
 
 app.route(
-  '/docs',
+  "/docs",
   Scalar.serve({
     document: () =>
       app.getOpenAPI31Document({
-        openapi: '3.1.0',
+        openapi: "3.1.0",
         info: {
-          title: 'Runmax API',
-          version: '1.0.0',
+          title: "Runmax API",
+          version: "1.0.0",
         },
       }),
   }),
-)
+);
