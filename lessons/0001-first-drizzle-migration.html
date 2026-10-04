@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 01 · Your first Drizzle migration</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<p class="eyebrow">Lesson 01 · RunMax API · Drizzle + PostgreSQL</p>
+<h1>Your first migration is blocked — and package.json is not the problem</h1>
+<p class="lede">You asked what your Drizzle setup is missing. I audited <code>apps/api</code>, ran the tooling against your real database, and found three blockers. This lesson: know exactly what they are, fix them, and understand what comes after <code>setup</code>.</p>
+
+<div class="win">
+  <span class="title">The win</span>
+  <p>By the end, <code>pnpm db:generate</code> writes <code>apps/api/drizzle/0000_*.sql</code>, and you can predict — before running it — the two errors <code>db:migrate</code> would hit on your PostgreSQL 16 and why.</p>
+</div>
+
+<h2>1 · What is actually missing</h2>
+
+<p><strong>Your <code>package.json</code> is complete.</strong> <code>drizzle-orm</code>, <code>drizzle-kit</code>, <code>pg</code>, <code>@types/pg</code>, <code>dotenv</code> are all present and installed. The blockers live one level up: in the config, the schema, and the environment.</p>
+
+<h3>Blocker 1 — <code>drizzle.config.ts</code> points at a file that does not exist</h3>
+<p>Your config says <code>schema: "./drizzle/schema.ts"</code>, but there is no <code>drizzle/</code> directory. Your tables live in <code>src/lib/db/schema.ts</code>. I ran your script and it failed exactly there:</p>
+
+<div class="evidence">
+  <div class="label">Observed — pnpm --filter @repo/api db:generate</div>
+  <pre><code>Error  No schema files found for path config ['./drizzle/schema.ts']
+Error  If path represents a file - please make sure to use .ts or other extension in the path</code></pre>
+</div>
+
+<h3>Blocker 2 — two schema bugs that only surface at <code>migrate</code> time</h3>
+<p><code>generate</code> never validates your SQL against PostgreSQL. I tested both statements on a throwaway database on your running server (PostgreSQL 16.15):</p>
+
+<div class="evidence">
+  <div class="label">Observed — default uuidv7() on your users table</div>
+  <pre><code>ERROR:  function uuidv7() does not exist
+HINT:  No function matches the given name and argument types.</code></pre>
+</div>
+
+<div class="evidence">
+  <div class="label">Observed — passwords.user_id char(26) referencing users.id uuid</div>
+  <pre><code>ERROR:  foreign key constraint "t3_t2_id_fkey" cannot be implemented
+DETAIL:  Key columns "t2_id" and "id" are of incompatible types: character and uuid.</code></pre>
+</div>
+
+<p><code>uuidv7()</code> is a built-in PostgreSQL function <a href="https://www.postgresql.org/docs/18/functions-uuid.html">only from version 18 onward</a>; your <code>docker-compose.yaml</code> pins <code>postgres:16-bookworm</code>. The <code>char(26)</code> on <code>passwords.userId</code> looks like a ULID leftover — the referenced <code>users.id</code> is a <code>uuid</code>, and PostgreSQL refuses to enforce a foreign key across those types.</p>
+
+<h3>Blocker 3 — environment wiring</h3>
+<ul>
+  <li><code>apps/api/.env</code> does not exist. Your <code>dev</code> script passes <code>--env-file=.env</code>, and <code>dotenv/config</code> in <code>drizzle.config.ts</code> resolves <code>.env</code> against the working directory — <code>apps/api/</code>. Only the repo root has a <code>.env</code>.</li>
+  <li>The <code>postgres</code> image initializes from <code>POSTGRES_USER</code> / <code>POSTGRES_PASSWORD</code> / <code>POSTGRES_DB</code>, not the <code>DATABASE_*</code> names in your <code>.env.example</code>. As written, the container gets no database, user, or password.</li>
+</ul>
+
+<div class="sidenote">Also noted: the empty stubs <code>modules/auth/schema.ts</code> (<code>import {}</code>) and <code>modules/user/schema.ts</code> (empty) are dead weight today. Either delete them or move table definitions there later — one source of truth for <code>drizzle-kit</code>.</div>
+
+<h2>2 · The fix</h2>
+
+<div class="codeblock">
+  <div class="filename">apps/api/drizzle.config.ts</div>
+  <pre><code><span class="del">  schema: "./drizzle/schema.ts",</span>
+<span class="add">  schema: "./src/lib/db/schema.ts",</span></code></pre>
+</div>
+
+<div class="codeblock">
+  <div class="filename">apps/api/src/lib/db/schema.ts</div>
+  <pre><code>  userId: <span class="del">char("user_id", { length: 26 })</span><span class="add">uuid("user_id")</span>
+    .notNull()</code></pre>
+</div>
+
+<p>Then pick an ID strategy. This is a real decision, not a bug — you wrote <code>uuidv7()</code> for time-sortable keys, which is a good instinct:</p>
+
+<table>
+  <tr><th>Option</th><th>Change</th><th>Tradeoff</th></tr>
+  <tr><td>Upgrade the image</td><td><code>postgres:18-bookworm</code></td><td>Keeps your schema as written. My recommendation for a greenfield project.</td></tr>
+  <tr><td>Generate in the app</td><td>v7 UUID in Node, drop the SQL default</td><td>Works on any PG version; IDs exist even outside SQL.</td></tr>
+  <tr><td>Use v4</td><td><code>default(sql`gen_random_uuid()`)</code></td><td>Zero migration pain; loses time-ordering.</td></tr>
+</table>
+
+<h2>3 · What comes after setup</h2>
+
+<ol class="steps">
+  <li><strong>Create <code>apps/api/.env</code></strong> from <code>.env.example</code>, and add <code>POSTGRES_USER</code>/<code>POSTGRES_PASSWORD</code>/<code>POSTGRES_DB</code> for the container. Then <code>docker compose up -d database</code>.</li>
+  <li><strong><code>pnpm db:generate</code></strong> — expect <code>Your SQL migration ➜ drizzle/0000_….sql</code>. I confirmed this output appears once blocker 1 is fixed. Read the SQL: it is exactly what will run against your database. Commit it.</li>
+  <li><strong><code>pnpm db:migrate</code></strong> — applies the SQL and records it in the <code>__drizzle_migrations</code> table. First run should print success; run it twice to see the second run do nothing.</li>
+  <li><strong><code>pnpm db:studio</code></strong> — open the browser UI and confirm <code>users</code> and <code>passwords</code> exist with the right column types.</li>
+  <li><strong>Prove the connection in code</strong> — make <code>/health</code> run <code>select 1</code> through <code>db</code> instead of returning static JSON. A health endpoint that never touches the database is not a health endpoint.</li>
+  <li><strong>Then build features</strong> — <code>auth</code>/<code>users</code> modules consume the schema; add <code>db:push</code> to <code>package.json</code> for throwaway prototyping alongside <code>generate</code>/<code>migrate</code>.</li>
+</ol>
+
+<div class="warning">
+  <span class="title">Expectation</span>
+  <p>Steps 2–4 will only go smoothly after you fix all three blockers. If you skip the <code>char(26)</code> fix or the ID decision, <code>db:migrate</code> fails mid-migration with exactly the errors shown above — and a half-applied migration needs cleanup before you rerun.</p>
+</div>
+
+<h2>4 · Retrieval practice</h2>
+<p>Answer from memory before clicking. Effortful recall is what makes this stick.</p>
+
+<div class="quiz">
+  <p class="question">Q1 · <code>db:generate</code> fails with "No schema files found for path config". What is the root cause?</p>
+  <ul class="quiz-options">
+    <li>
+      <button class="quiz-option" data-correct>The schema field in drizzle.config.ts points at a file not created yet</button>
+      <p class="quiz-feedback">Correct. The path must name a real schema file — here, src/lib/db/schema.ts.</p>
+    </li>
+    <li>
+      <button class="quiz-option">The dependencies list in package.json is missing the drizzle-kit package entirely now</button>
+      <p class="quiz-feedback">No. drizzle-kit is installed and running — it is the one reporting the error.</p>
+    </li>
+    <li>
+      <button class="quiz-option">The environment file is missing so DATABASE_URL never reaches the config loader</button>
+      <p class="quiz-feedback">No. That is a real gap, but this error happens before any connection is attempted.</p>
+    </li>
+    <li>
+      <button class="quiz-option">The migrations output folder was deleted so drizzle-kit cannot write migration files</button>
+      <p class="quiz-feedback">No. The out folder is created automatically on the first successful generate.</p>
+    </li>
+  </ul>
+  <button class="quiz-retry">Try again</button>
+</div>
+
+<div class="quiz">
+  <p class="question">Q2 · Migration fails: key columns are of incompatible types: character and uuid. Which declaration is at fault?</p>
+  <ul class="quiz-options">
+    <li>
+      <button class="quiz-option" data-correct>passwords.userId is char(26) while the referenced users.id column is uuid</button>
+      <p class="quiz-feedback">Correct. A foreign key needs matching column types on both sides.</p>
+    </li>
+    <li>
+      <button class="quiz-option">passwords.userId is uuid(26) while the referenced users.id column is char</button>
+      <p class="quiz-feedback">No. uuid has no length parameter, and users.id is declared as uuid.</p>
+    </li>
+    <li>
+      <button class="quiz-option">passwords.hash is char(26) while the referenced users.id column is uuid</button>
+      <p class="quiz-feedback">No. hash is varchar(128) and is not part of the foreign key constraint.</p>
+    </li>
+    <li>
+      <button class="quiz-option">passwords.userId is varchar while the referenced users.id column is char</button>
+      <p class="quiz-feedback">No. varchar would also mismatch, but neither column is declared that way.</p>
+    </li>
+  </ul>
+  <button class="quiz-retry">Try again</button>
+</div>
+
+<div class="quiz">
+  <p class="question">Q3 · generate succeeds, but migrate fails on the users table with postgres:16-bookworm. Why?</p>
+  <ul class="quiz-options">
+    <li>
+      <button class="quiz-option" data-correct>uuidv7() is a built-in PostgreSQL function only from version eighteen onward</button>
+      <p class="quiz-feedback">Correct. On 16 the parser finds no such function and the CREATE TABLE aborts.</p>
+    </li>
+    <li>
+      <button class="quiz-option">uuidv7() is provided by the pgcrypto extension which is not installed</button>
+      <p class="quiz-feedback">No. pgcrypto offers gen_random_uuid() — uuidv7() is not in it.</p>
+    </li>
+    <li>
+      <button class="quiz-option">uuidv7() is a drizzle-orm helper that never generates real SQL functions</button>
+      <p class="quiz-feedback">No. sql template output is passed to PostgreSQL verbatim, as the migration file shows.</p>
+    </li>
+    <li>
+      <button class="quiz-option">uuidv7() is rejected because the id column was declared as char(26)</button>
+      <p class="quiz-feedback">No. users.id is declared as uuid; the failure is the missing function.</p>
+    </li>
+  </ul>
+  <button class="quiz-retry">Try again</button>
+</div>
+
+<h2>5 · Do it now</h2>
+<p>Apply the three fixes, then run <code>pnpm db:generate</code> and <code>pnpm db:migrate</code>. Compare your terminal output against the expected lines in section 3. Any diff from the expectation is signal — bring it to me.</p>
+
+<div class="source-card">
+  <span class="title">Primary source</span>
+  <p><a href="https://orm.drizzle.team/docs/migrations">Drizzle ORM — Migrations fundamentals</a>. Read the three workflow options (pull / push / generate+migrate) and be ready to say why <code>generate</code> + <code>migrate</code> fits RunMax. Command-level detail: <a href="https://orm.drizzle.team/docs/drizzle-kit-generate"><code>drizzle-kit generate</code></a> and <a href="https://orm.drizzle.team/docs/drizzle-kit-migrate"><code>migrate</code></a>.</p>
+</div>
+
+<div class="callout">
+  <span class="title">Stuck? Ask me.</span>
+  <p>I am your teacher — ask follow-up questions about anything unclear here: why <code>char(26)</code> fails, what <code>__drizzle_migrations</code> is for, how to split schema files, whatever. No question is too basic.</p>
+</div>
+
+<footer>
+  <nav>
+    <a href="../reference/drizzle-setup-checklist.html">Reference: Drizzle setup checklist</a>
+    <a href="../RESOURCES.md">Resources</a>
+    <a href="../MISSION.md">Mission</a>
+  </nav>
+  <p>Lesson 01 · Evidence in this lesson was produced by running the commands against your repository and your PostgreSQL 16.15 on 2026-10-04.</p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
