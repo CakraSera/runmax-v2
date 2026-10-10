@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 02 · The login floor</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<p class="eyebrow">Lesson 02 · RunMax API · Auth</p>
+<h1>Your login already hashes. That is not the floor.</h1>
+<p class="lede">You asked whether <code>POST /login</code> meets the durable minimum. Hashing is the part that does. The skill is smaller than the checklist: tell a <em>floor</em> rule from a newer preference, then mark your own <em>verifier</em>.</p>
+
+<div class="win">
+  <span class="title">The win</span>
+  <p>You can put a control from <code>apps/api/src/modules/auth/route.ts</code> into one of three bins — floor fail, floor pass, not the floor — and you will not add MFA just to “meet the standard.”</p>
+</div>
+
+<h2>1 · The filter</h2>
+
+<p>A control is on the floor only if all three answers are yes. Your login handler is the <em>verifier</em>: the code that checks the password and issues the <em>session secret</em>.</p>
+
+<ol class="steps">
+  <li>Has the <em>requirement</em> survived, not just the latest number? A rule that has held across revisions is Lindy. A number that moved last year is not.</li>
+  <li>Is it required at the lowest level — a NIST <strong>SHALL</strong>, or OWASP ASVS Level 1 — rather than a SHOULD or a Level 3 control?</li>
+  <li>Does this handler actually do it? A TODO is not a pass.</li>
+</ol>
+
+<div class="sidenote">Lindy, applied here: the longer a requirement has held, the less likely it is a fashion. Salt plus a cost factor has been required since at least <a href="https://pages.nist.gov/800-63-3/sp800-63b.html#memsecretver">NIST SP 800-63B §5.1.1.2 (June 2017)</a>. Rate-limiting failed attempts on the account is a SHALL in that same section, and still a SHALL in <a href="https://pages.nist.gov/800-63-4/sp800-63b/authenticators/#passwordver">800-63B-4</a> (current 1 Aug 2025).</div>
+
+<p>One number that did <em>not</em> survive: subscriber-chosen passwords <strong>SHALL</strong> be at least 8 characters in the 2017 text. The 2025 text raises single-factor passwords to 15. The durable rule is “enforce a minimum, plus a blocklist, and do not demand uppercase-digit-symbol.” The 15 is current NIST. It is not old enough to be the floor. Enforce length on register, not inside login.</p>
+
+<h2>2 · Three verdicts, from your code</h2>
+
+<h3>Floor pass — <code>argon2.verify</code></h3>
+<p><code>verifyPassword</code> calls <code>argon2.verify</code>, and <code>hashingPassword</code> calls <code>argon2.hash</code> with no weakened options. The requirement is a salt and a cost factor, not the brand name Argon2. <a href="https://github.com/ranisalt/node-argon2#usage">node-argon2</a> says its defaults follow the Argon2 team and should not be changed for passwords. The hash is not copied into the JWT. That part stands.</p>
+
+<h3>Floor fail — the password is in the log</h3>
+<p>Line 47 of <code>route.ts</code> is <code>console.log({ email, password })</code>. <code>signToken</code> then logs <code>{ user, secret }</code>, and the object you pass includes <code>hash</code>. The route also logs <code>signedToken</code>. The <a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude">OWASP Logging Cheat Sheet</a> says not to record authentication passwords, access tokens, session identifiers, or encryption keys. A log drain is then a credential store. This one miss is enough to fail the floor.</p>
+
+<h3>Not the floor — MFA</h3>
+<p>Multi-factor is NIST Authenticator Assurance Level 2. In <a href="https://github.com/OWASP/ASVS/blob/master/4.0/en/0x11-V2-Authentication.md">OWASP ASVS 4.0.3</a>, impersonation resistance (V2.2.4) is Level 3 only. It is the right next step if an account can spend money or expose someone else’s data. It is not the minimum for this login.</p>
+
+<div class="warning">
+  <span class="title">Same words, different time</span>
+  <p>Returning one sentence is not enough if a missing user skips Argon2 and a wrong password runs it. The <a href="https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#authentication-responses">OWASP Authentication Cheat Sheet</a> shows that early return as a timing <em>enumeration</em>: the attacker learns the account exists from how long you take. Your handler does both — <code>"Invalid email"</code> before verify, <code>"Invalid password"</code> after.</p>
+</div>
+
+<h2>3 · Retrieval practice</h2>
+<p>Answer from memory. The options are the same length on purpose.</p>
+
+<div class="quiz">
+  <p class="question">Q1 · NIST raised the single-factor minimum from 8 (2017) to 15 (2025). Is 15 on the floor?</p>
+  <ul class="quiz-options">
+    <li>
+      <button class="quiz-option" data-correct>No. That freshest number is never Lindy.</button>
+      <p class="quiz-feedback">Correct. The requirement that survived is “a minimum, plus a blocklist, no composition rules.” The digit 15 is one revision old.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Yes. The latest NIST wording is binding.</button>
+      <p class="quiz-feedback">No. Current text is what you implement when you choose to track NIST. It is not automatically the durable floor.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Yes. Any longer secret is always safest.</button>
+      <p class="quiz-feedback">No. Longer is often better. “Always safest” is not the test. The test is whether the requirement has held.</p>
+    </li>
+    <li>
+      <button class="quiz-option">No. Minimum length rules are now banned.</button>
+      <p class="quiz-feedback">No. Composition rules (uppercase, digit, symbol) are what NIST tells you not to impose. A minimum length is still required.</p>
+    </li>
+  </ul>
+  <button class="quiz-retry">Try again</button>
+</div>
+
+<div class="quiz">
+  <p class="question">Q2 · Missing user returns the same 401 text, but skips Argon2. Verdict?</p>
+  <ul class="quiz-options">
+    <li>
+      <button class="quiz-option" data-correct>Fail: timing still leaks the account.</button>
+      <p class="quiz-feedback">Correct. Enumeration is any difference the attacker can measure. Time is a difference. Run a dummy verify on the miss.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Pass: same message hides the account.</button>
+      <p class="quiz-feedback">No. Identical JSON does not hide a handler that returns before the slow hash.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Skip: timing checks are not required.</button>
+      <p class="quiz-feedback">No. The cheat sheet treats the early return as the bug, not as an optional extra.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Fail: status codes alone still leaks.</button>
+      <p class="quiz-feedback">No. In this question the status is already the same 401. The remaining leak is duration, not the code.</p>
+    </li>
+  </ul>
+  <button class="quiz-retry">Try again</button>
+</div>
+
+<div class="quiz">
+  <p class="question">Q3 · Opaque server session, or a rotating refresh token. Which meets the floor?</p>
+  <ul class="quiz-options">
+    <li>
+      <button class="quiz-option" data-correct>Either, if logout can delete the secret.</button>
+      <p class="quiz-feedback">Correct. The old requirement is a session secret you can expire and kill. Rotation is one shape. A row you delete is the other.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Only if refresh rotation is also needed.</button>
+      <p class="quiz-feedback">No. Refresh rotation is your TODO, and it is fine. It is not more standard than a server-side session.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Only some two-hour JWT meets this floor.</button>
+      <p class="quiz-feedback">No. A JWT nothing can revoke fails the floor. <code>verifyToken</code> is empty, so yours cannot even be checked.</p>
+    </li>
+    <li>
+      <button class="quiz-option">Neither, until MFA is already turned on.</button>
+      <p class="quiz-feedback">No. MFA is the next level, not the condition for a revocable session.</p>
+    </li>
+  </ul>
+  <button class="quiz-retry">Try again</button>
+</div>
+
+<h2>4 · Classify your handler</h2>
+<p>Click a card, then click the bin. A wrong bin stays put and tells you why. Do this before you open the <a href="../reference/login-floor.html">sheet</a>.</p>
+
+<div class="sort">
+  <p class="question">Six controls from the login path. Three bins.</p>
+  <ul class="sort-pool">
+    <li>
+      <button class="sort-card" data-answer="fail">console.log of the plaintext password</button>
+      <p class="sort-why">Floor fail. Passwords, hashes, tokens, and signing keys do not go to logs.</p>
+    </li>
+    <li>
+      <button class="sort-card" data-answer="pass">argon2.verify against the stored hash</button>
+      <p class="sort-why">Floor pass. Salt plus a cost factor, compared by the library. You do this.</p>
+    </li>
+    <li>
+      <button class="sort-card" data-answer="skip">MFA required before this login ships</button>
+      <p class="sort-why">Not the floor. AAL2 / ASVS Level 3. Next step, not the minimum.</p>
+    </li>
+    <li>
+      <button class="sort-card" data-answer="fail">Invalid email versus Invalid password</button>
+      <p class="sort-why">Floor fail. Two messages are enumeration. One 401 body, both paths.</p>
+    </li>
+    <li>
+      <button class="sort-card" data-answer="fail">verifyToken is an empty function</button>
+      <p class="sort-why">Floor fail. A session secret you cannot check or delete is not a session.</p>
+    </li>
+    <li>
+      <button class="sort-card" data-answer="pass">HTTP 401 when the password mismatches</button>
+      <p class="sort-why">Floor pass. 401 has meant authentication failed since HTTP/1.0. Keep it. Fix the body, not the status.</p>
+    </li>
+  </ul>
+  <div class="sort-bins">
+    <div class="sort-bin" data-bin="fail">
+      <p class="sort-bin-label">Floor fail</p>
+      <ul class="sort-bin-cards"></ul>
+    </div>
+    <div class="sort-bin" data-bin="pass">
+      <p class="sort-bin-label">Floor pass</p>
+      <ul class="sort-bin-cards"></ul>
+    </div>
+    <div class="sort-bin" data-bin="skip">
+      <p class="sort-bin-label">Not the floor</p>
+      <ul class="sort-bin-cards"></ul>
+    </div>
+  </div>
+  <p class="sort-status"></p>
+  <button class="sort-retry">Try again</button>
+</div>
+
+<h2>5 · Do it now</h2>
+<p>Open <code>route.ts</code> and <code>token.ts</code>. Without scrolling back up, write the bin for each of these: the log on line 47, the two 401 messages, <code>process.env.JWT_SECRET</code> passed even when unset, and the empty <code>verifyToken</code>. Then check yourself against the <a href="../reference/login-floor.html">login floor sheet</a>. Any disagreement is the thing to ask about.</p>
+
+<div class="source-card">
+  <span class="title">Primary source</span>
+  <p><a href="https://pages.nist.gov/800-63-4/sp800-63b/authenticators/#passwordver">NIST SP 800-63B-4 — Password verifiers</a>. Read the SHALL lines only: length, rate limit, protected channel, salted hash with a cost factor, no composition rules. Then open the <a href="https://github.com/usnistgov/800-63-3/blob/nist-pages/sp800-63b/sec5_authenticators.md">2017 §5.1.1.2</a> and mark which SHALLs moved. That diff is the Lindy test.</p>
+</div>
+
+<div class="callout">
+  <span class="title">Stuck? Ask me.</span>
+  <p>I am your teacher. Ask why a dummy Argon2 verify is required, why <code>undefined</code> does not trigger a JavaScript default, or whether RunMax should stop at this floor or go to AAL2. For the AAL choice, also ask <a href="https://security.stackexchange.com/">Information Security Stack Exchange</a> — that judgment depends on what an account can do, and other practitioners will push on it.</p>
+</div>
+
+<footer>
+  <nav>
+    <a href="../reference/login-floor.html">Reference: login floor</a>
+    <a href="./0001-first-drizzle-migration.html">Lesson 01</a>
+    <a href="../RESOURCES.md">Resources</a>
+    <a href="../MISSION.md">Mission</a>
+  </nav>
+  <p>Lesson 02 · Claims are tied to NIST 800-63B (2017 and 2025), OWASP ASVS 4.0.3, and the OWASP cheat sheets, checked against <code>route.ts</code> and <code>token.ts</code> on 2026-10-10. No application code was changed.</p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+</body>
+</html>

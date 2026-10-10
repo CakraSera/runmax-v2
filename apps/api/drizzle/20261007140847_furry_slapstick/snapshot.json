@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "89dbc829-90c8-4a79-b1cb-28d98c0716d2",
+  "id": "7d4e4432-ef7b-49ac-a8e2-e700cace5ce2",
   "prevIds": [
-    "00000000-0000-0000-0000-000000000000"
+    "f0dd7636-e9da-47f0-8527-d9027e7c2e45"
   ],
   "ddl": [
     {
@@ -32,7 +32,7 @@
       "table": "passwords"
     },
     {
-      "type": "char(26)",
+      "type": "uuid",
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
@@ -92,6 +92,19 @@
       "generated": null,
       "identity": null,
       "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "users"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "role",
       "entityType": "columns",
       "schema": "public",
       "table": "users"

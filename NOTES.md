@@ -12,4 +12,8 @@
 
 ## Teaching preferences
 - User asks short, direct questions in English about their own code → answer first, teach second
+
+- Judges auth standards by Lindy (what has survived across revisions), not by the newest checklist. Teach the diff between NIST 2017 and 2025 rather than a flat "best practices" list.
+- A review can be advice-only. Do not edit application code unless asked. Teaching files (`lessons/`, `reference/`, `assets/`) are fine.
+- For a single confusing idea, a 7-year-old explanation is welcome: one picture, short sentences, then the real name.
 - Prefer proving claims by running commands against their real stack over asserting from memory

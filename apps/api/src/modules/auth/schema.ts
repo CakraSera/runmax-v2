@@ -8,8 +8,8 @@ export const AuthRegisterSchema = z.object({
 });
 
 export const AuthLoginSchema = z.object({
-  email: z.string(),
-  password: z.string(),
+  email: z.string().max(254),
+  password: z.string().min(1).max(128),
 });
 
 export const AuthLoginSuccessSchema = z.object({ token: z.string() });

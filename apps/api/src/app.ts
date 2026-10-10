@@ -15,7 +15,7 @@ app.route("/auth", authRoute);
 // app.route("/users", userRoutes);
 
 app.route(
-  "/docs",
+  "/",
   Scalar.serve({
     document: () =>
       app.getOpenAPI31Document({
