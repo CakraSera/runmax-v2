@@ -3,7 +3,12 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute } from "@hono/zod-openapi";
 import { z } from "zod";
 
-import { AuthRegisterSchema, AuthLoginSchema } from "./schema.js";
+import {
+  AuthRegisterSchema,
+  AuthLoginSchema,
+  AuthHeaderSchema,
+  AuthMeSchema,
+} from "./schema.js";
 import { PrivateUserSchema } from "../user/schema.js";
 
 import { users, passwords } from "../../lib/db/schema.js";
@@ -15,6 +20,8 @@ import {
   dummyHashPassword,
 } from "../../lib/auth.ts";
 import { signToken } from "../../lib/token.ts";
+import { authMiddleware } from "./middleware.ts";
+
 // TODO(auth MVP): 7 endpoints — register, login, refresh, logout, me, forgot-password, reset-password
 // TODO(auth MVP): token strategy — JWT access (~15 min) + rotating opaque refresh (~30 days, hashed at rest)
 // TODO(auth MVP): password hashing (argon2id or bcrypt); never store plaintext
@@ -34,6 +41,7 @@ authRoute.openapi(
     tags: ["Auth"],
     request: {
       body: {
+        required: true,
         description: "User login credentials",
         content: {
           "application/json": {
@@ -49,8 +57,30 @@ authRoute.openapi(
         content: {
           "application/json": {
             schema: z.object({
-              status: z.string().default("ok"),
+              status: z.string(),
               accessToken: z.string(),
+            }),
+          },
+        },
+      },
+      401: {
+        description: "Invalid email or password",
+        content: {
+          "application/json": {
+            schema: z.object({
+              status: z.string(),
+              message: z.string(),
+            }),
+          },
+        },
+      },
+      500: {
+        description: "JWT secret key missing or too short",
+        content: {
+          "application/json": {
+            schema: z.object({
+              status: z.string(),
+              message: z.string(),
             }),
           },
         },
@@ -131,21 +161,8 @@ authRoute.openapi(
     },
   }),
   async (c) => {
-    const { username, email, fullName, role, password } = await c.req.json();
+    const { username, email, fullName, password } = c.req.valid("json");
 
-    if (!username || !email || !password) {
-      return c.json(
-        { status: "error", message: "Missing required fields" },
-        400,
-      );
-    }
-
-    if (password.length < 15) {
-      return c.json(
-        { status: "error", message: "Password must be at least 15 characters" },
-        400,
-      );
-    }
     const row = await db
       .select({ userName: users.username })
       .from(users)
@@ -153,7 +170,10 @@ authRoute.openapi(
       .limit(1);
 
     if (row.length > 0) {
-      return c.json({ status: "error", message: "Email already exists" }, 400);
+      return c.json(
+        { status: "error", message: "Could not create account" },
+        400,
+      );
     }
     const hashedPassword = await hashingPassword(password);
 
@@ -178,9 +198,29 @@ authRoute.openapi(
   },
 );
 
-// TODO(refresh): POST /refresh — rotate refresh token, issue new pair; 401 on revoked/reused token
-// TODO(logout): POST /logout — revoke current refresh token
 // TODO(me): GET /me — auth guard middleware; return user id/email; first smoke test of the guard
-// TODO(forgot-password): POST /forgot-password — always 200 (no user enumeration); email reset link
-// TODO(forgot-password): depends on email sender — ship without this + reset if not ready at launch
-// TODO(reset-password): POST /reset-password — token + new password; revoke all refresh tokens
+authRoute.openapi(
+  createRoute({
+    method: "post",
+    path: "/me",
+    tags: ["Auth"],
+    request: {
+      headers: AuthHeaderSchema,
+    },
+    middleware: authMiddleware,
+    responses: {
+      201: {
+        description: "Private Data User",
+        content: { "application/json": { schema: AuthMeSchema } },
+      },
+      400: {
+        description: "User Not Found",
+      },
+    },
+  }),
+  async (c) => {
+    const user = await c.get("user");
+    console.log({ user });
+    return c.json({ user }, 201);
+  },
+);

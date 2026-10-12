@@ -3,7 +3,6 @@ import argon2 from "argon2";
 const dummyPassword = "password";
 export async function hashingPassword(password: string) {
   const hashedPasword = await argon2.hash(password);
-  console.log({ hashedPasword });
   return hashedPasword;
 }
 

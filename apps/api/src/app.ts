@@ -24,6 +24,8 @@ app.route(
           title: "Runmax API",
           version: "1.0.0",
         },
+        // server added
+        servers: [{ url: "http://localhost:3000" }],
       }),
   }),
 );
