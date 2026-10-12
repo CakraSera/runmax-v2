@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Login floor</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<p class="eyebrow">Reference · RunMax API</p>
+<h1>Login floor</h1>
+<p class="lede">Compressed essence of <a href="../lessons/0002-login-floor.html">Lesson 02</a>. Print it. Use the glossary words in later lessons. Reach for this before adding MFA, OAuth, or a refresh-token design.</p>
+
+<h2>Glossary</h2>
+<table>
+  <tr><th>Term</th><th>Use it this way</th></tr>
+  <tr><td>Floor</td><td>A control required at the lowest assurance level, whose requirement has survived across revisions. A TODO is not a pass.</td></tr>
+  <tr><td>Verifier</td><td>The code that checks the authenticator. In RunMax, <code>POST /login</code> in <code>route.ts</code>.</td></tr>
+  <tr><td>Enumeration</td><td>Learning whether an account exists from any measurable difference: body, status, or time.</td></tr>
+  <tr><td>Throttle</td><td>A cap on failed attempts, answered with <code>429</code>. Not a hard lock, which lets an attacker disable the account.</td></tr>
+  <tr><td>Session secret</td><td>What login issues. It must expire, and logout must be able to kill it.</td></tr>
+  <tr><td>Not the floor</td><td>Newer, or higher-assurance. Implement only after the floor passes.</td></tr>
+</table>
+
+<h2>The filter</h2>
+<ol class="steps">
+  <li>Has the requirement survived, not just the latest number?</li>
+  <li>Is it a NIST SHALL or an OWASP ASVS Level 1 control, not a SHOULD or Level 3?</li>
+  <li>Does this verifier actually do it?</li>
+</ol>
+<p>Three yeses: floor pass. The requirement qualifies, and the code does not do it: floor fail. The requirement is new or higher-level: not the floor.</p>
+
+<h2>Floor, against this handler</h2>
+<p>Audited 2026-10-10. Files: <code>apps/api/src/modules/auth/route.ts</code>, <code>apps/api/src/lib/token.ts</code>, <code>apps/api/src/lib/auth.ts</code>.</p>
+<table>
+  <tr><th>Check</th><th>Verdict</th><th>Where</th></tr>
+  <tr><td>Salted slow hash, compared by the library</td><td>Pass</td><td><code>argon2.verify</code> / <code>argon2.hash</code>, no weakened options</td></tr>
+  <tr><td>Hash not inside the token</td><td>Pass</td><td>JWT payload is <code>sub</code>, <code>iat</code>, <code>exp</code> only</td></tr>
+  <tr><td>Failure is HTTP 401</td><td>Pass</td><td>Both miss paths. Fix the body, not the status</td></tr>
+  <tr><td>Never log password, hash, token, or signing key</td><td>Fail</td><td><code>console.log({ email, password })</code>; <code>signToken</code> logs <code>user</code> (includes hash) and <code>secret</code>; route logs <code>signedToken</code></td></tr>
+  <tr><td>One failure body, and similar time</td><td>Fail</td><td><code>"Invalid email"</code> returns before Argon2. <code>"Invalid password"</code> returns after</td></tr>
+  <tr><td>Throttle failed attempts on the account, and per IP</td><td>Fail</td><td>No limiter under <code>apps/api</code></td></tr>
+  <tr><td>Reject a bad body before the database or Argon2</td><td>Fail</td><td><code>AuthLoginSchema</code> exists. The login route does not use it. Cap password length (deny above 128) before hashing</td></tr>
+  <tr><td>No in-repo or missing signing key</td><td>Fail</td><td>Default <code>"default_jwt_secret_key"</code>. Caller always passes <code>process.env.JWT_SECRET</code>, so an unset env skips that default and signs with <code>undefined</code></td></tr>
+  <tr><td>Session secret expires and can be killed</td><td>Fail</td><td><code>exp</code> is 2 hours. <code>verifyToken</code> is empty. Nothing to delete on logout</td></tr>
+  <tr><td>Password only on an authenticated protected channel</td><td>Deploy</td><td>Not visible in the route. If the process is reachable without TLS, the rest does not matter</td></tr>
+</table>
+
+<div class="sidenote">Prefer <code>429</code> plus a delay over a hard lock. NIST has required a rate limit on the account since 2017 and still does. <a href="https://github.com/OWASP/ASVS/blob/master/4.0/en/0x11-V2-Authentication.md">ASVS 4.0.3 V2.2.1</a> (Level 1) caps a single account at 100 failures per hour. A tighter window is fine.</div>
+
+<h2>Not the floor</h2>
+<table>
+  <tr><th>Idea</th><th>Why it waits</th></tr>
+  <tr><td>MFA</td><td>NIST AAL2. ASVS V2.2.4 is Level 3. Next step if the account can spend or expose others’ data</td></tr>
+  <tr><td>OAuth 2.0</td><td>Delegated access for a third party. Not first-party login</td></tr>
+  <tr><td>Refresh-token rotation</td><td>One way to kill a session. An opaque server-side id you delete is the other. Either meets the floor</td></tr>
+  <tr><td>15-character minimum</td><td>Current NIST (2025). The 2017 SHALL was 8. OWASP ASVS 4.0.3 Level 1 says 12. Put length and a breached-password blocklist on register</td></tr>
+  <tr><td>Composition rules</td><td>Explicitly not required. 2017: SHOULD NOT. 2025: SHALL NOT</td></tr>
+  <tr><td><code>iss</code> / <code>aud</code></td><td>Optional in RFC 7519. Add when a second consumer exists</td></tr>
+  <tr><td>HSM pepper</td><td>NIST SHOULD, not SHALL</td></tr>
+</table>
+
+<h2>Smallest set that clears the floor</h2>
+<ol class="steps">
+  <li>Stop logging the password, hash, token, and key. Log <code>login_failed</code> / <code>login_ok</code> with account id, if known, and client IP.</li>
+  <li>One 401 body for every failure. Dummy <code>argon2.verify</code> when the user does not exist.</li>
+  <li>Throttle per account and per IP. <code>429</code> when the window is exhausted.</li>
+  <li>Parse with <code>AuthLoginSchema</code>. Cap password length before Argon2.</li>
+  <li>Refuse to sign unless <code>JWT_SECRET</code> is present and long. Delete the default.</li>
+  <li>Make <code>verifyToken</code> real, and store something logout can delete.</li>
+  <li>Serve login only behind TLS.</li>
+</ol>
+
+<h2>Sources</h2>
+<table>
+  <tr><th>Source</th><th>Held since</th><th>Use for</th></tr>
+  <tr><td><a href="https://pages.nist.gov/800-63-4/sp800-63b/authenticators/#passwordver">NIST SP 800-63B-4 password verifiers</a></td><td>Suite from 2004. This revision final 1 Aug 2025</td><td>Current SHALLs: 15 for single-factor, rate limit, TLS, salted hash, no composition rules</td></tr>
+  <tr><td><a href="https://github.com/usnistgov/800-63-3/blob/nist-pages/sp800-63b/sec5_authenticators.md">NIST SP 800-63B §5.1.1.2 (June 2017)</a></td><td>June 2017, superseded 1 Aug 2025</td><td>The diff. 8-character SHALL, same rate-limit SHALL, same salted-hash SHALL</td></tr>
+  <tr><td><a href="https://github.com/OWASP/ASVS/blob/master/4.0/en/0x11-V2-Authentication.md">OWASP ASVS 4.0.3 V2</a></td><td>2019, still the cited edition</td><td>Level 1 vs Level 3. 100 failures/hour/account. 12-character Level 1</td></tr>
+  <tr><td><a href="https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#authentication-responses">OWASP Authentication Cheat Sheet</a></td><td>Same enumeration rule for many years</td><td>Generic body, and the early-return timing example</td></tr>
+  <tr><td><a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude">OWASP Logging Cheat Sheet</a></td><td>CWE-532 since 2006</td><td>Do not log passwords, access tokens, session ids, encryption keys</td></tr>
+</table>
+
+<footer>
+  <nav>
+    <a href="../lessons/0002-login-floor.html">Lesson 02</a>
+    <a href="../lessons/0001-first-drizzle-migration.html">Lesson 01</a>
+    <a href="../RESOURCES.md">Resources</a>
+    <a href="../MISSION.md">Mission</a>
+  </nav>
+  <p>Compiled from a read of the RunMax login path on 2026-10-10. Application code was not changed.</p>
+</footer>
+
+</main>
+</body>
+</html>

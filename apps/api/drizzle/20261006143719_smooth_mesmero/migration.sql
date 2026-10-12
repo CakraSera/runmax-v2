@@ -1,6 +1,6 @@
 CREATE TABLE "passwords" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
-	"user_id" char(26) NOT NULL UNIQUE,
+	"user_id" uuid NOT NULL UNIQUE,
 	"hash" varchar(128) NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL

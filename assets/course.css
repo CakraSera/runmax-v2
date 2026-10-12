@@ -357,6 +357,110 @@ td {
 
 .quiz.answered .quiz-retry { display: inline-block; }
 
+/* ---------- sort widget (see assets/sort.js) ---------- */
+
+.sort {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem 1.25rem;
+  margin: 1.4rem 0;
+  background: #fff;
+}
+
+.sort .question { font-weight: 650; margin-top: 0; }
+
+.sort-pool, .sort-bin-cards {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+}
+
+.sort-card {
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  text-align: left;
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  margin: 0.35rem 0;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.sort-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.sort-card.right { border-color: var(--good); background: var(--good-soft); cursor: default; }
+.sort-card.wrong { border-color: var(--bad); background: var(--bad-soft); }
+
+.sort-why {
+  display: none;
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  margin: 0 0 0.55rem;
+  color: var(--ink-soft);
+}
+
+.sort-card.right ~ .sort-why,
+.sort-card.wrong ~ .sort-why { display: block; }
+
+.sort-card.right ~ .sort-why { color: var(--good); }
+.sort-card.wrong ~ .sort-why { color: var(--bad); }
+
+.sort-bins {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+@media (min-width: 40rem) {
+  .sort-bins { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+.sort-bin {
+  border: 1px dashed var(--rule);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem 0.7rem;
+  min-height: 5.5rem;
+  cursor: pointer;
+  background: var(--note);
+}
+
+.sort-bin:hover { border-color: var(--accent); }
+
+.sort-bin-label {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.sort-status {
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin: 0.8rem 0 0;
+}
+
+.sort-retry {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  margin-top: 0.75rem;
+  cursor: pointer;
+  display: none;
+}
+
+.sort.done .sort-retry { display: inline-block; }
+
+
 /* ---------- source card / footer ---------- */
 
 .source-card {
@@ -393,8 +497,8 @@ footer nav a { margin-right: 1rem; }
   body { background: #fff; font-size: 11pt; }
   main { max-width: none; padding: 0; }
   .sidenote { position: static; width: auto; background: none; }
-  .quiz-retry, .quiz-option { border-color: #999; }
   a { color: var(--ink); }
   h2 { break-after: avoid; }
-  pre, .quiz, .callout, .warning, .win { break-inside: avoid; }
+.quiz-retry, .quiz-option, .sort-card, .sort-bin { border-color: #999; }
+  pre, .quiz, .sort, .callout, .warning, .win { break-inside: avoid; }
 }

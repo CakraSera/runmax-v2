@@ -15,7 +15,7 @@ app.route("/auth", authRoute);
 // app.route("/users", userRoutes);
 
 app.route(
-  "/docs",
+  "/",
   Scalar.serve({
     document: () =>
       app.getOpenAPI31Document({
@@ -24,6 +24,8 @@ app.route(
           title: "Runmax API",
           version: "1.0.0",
         },
+        // server added
+        servers: [{ url: "http://localhost:3000" }],
       }),
   }),
 );
