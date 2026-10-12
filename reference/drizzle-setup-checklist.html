@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Drizzle + PostgreSQL setup checklist</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<p class="eyebrow">Reference · RunMax API</p>
+<h1>Drizzle + PostgreSQL setup checklist</h1>
+<p class="lede">The compressed essence of <a href="../lessons/0001-first-drizzle-migration.html">Lesson 01</a>. Print it, keep it next to the keyboard, and reach for the error table before you reach for me.</p>
+
+<h2>Config invariants</h2>
+<ul class="checklist">
+  <li><code>drizzle.config.ts</code> <code>schema</code> points at a file that exists — for RunMax: <code>./src/lib/db/schema.ts</code></li>
+  <li><code>schema</code> names exactly one barrel file; it re-exports every table. Second entry points = drift</li>
+  <li><code>out</code> is committed: <code>drizzle/</code> with generated <code>*.sql</code> + <code>meta/</code></li>
+  <li><code>apps/api/.env</code> exists (both <code>tsx --env-file</code> and <code>dotenv/config</code> resolve it against <code>apps/api/</code>)</li>
+  <li>Container credentials (<code>POSTGRES_USER</code>, <code>POSTGRES_PASSWORD</code>, <code>POSTGRES_DB</code>) are separate from app credentials (<code>DATABASE_URL</code>)</li>
+</ul>
+
+<h2>Schema invariants</h2>
+<ul class="checklist">
+  <li>Foreign key column type equals the referenced column type, exactly (uuid → uuid, char(26) → char(26))</li>
+  <li>Every SQL function used in a default exists on your PostgreSQL major version</li>
+  <li>Identifiers: one convention per table (snake_case in SQL, camelCase in TS)</li>
+  <li><code>updatedAt</code> <code>$onUpdate</code> is Drizzle-side — it fires in ORM updates, not raw SQL</li>
+</ul>
+
+<h2>Workflow</h2>
+<table>
+  <tr><th>Command</th><th>Does</th><th>When</th></tr>
+  <tr><td><code>pnpm db:generate</code></td><td>Diff schema → new <code>drizzle/NNNN_*.sql</code> (no DB touched)</td><td>Every schema change; commit the output</td></tr>
+  <tr><td><code>pnpm db:migrate</code></td><td>Applies pending SQL, records in <code>__drizzle_migrations</code></td><td>Dev, CI, deploy</td></tr>
+  <tr><td><code>pnpm db:push</code></td><td>Diff schema → DB directly, no SQL file</td><td>Throwaway prototyping only</td></tr>
+  <tr><td><code>pnpm db:studio</code></td><td>Browser UI over your data</td><td>Verification after migrate</td></tr>
+</table>
+
+<div class="sidenote">Never mix <code>push</code> and <code>generate</code>+<code>migrate</code> on one database. <code>push</code> applies changes the migration table never records, and the next <code>migrate</code> replays them.</div>
+
+<h2>Error → cause</h2>
+<table>
+  <tr><th>Error text</th><th>Real cause</th></tr>
+  <tr><td><code>No schema files found for path config</code></td><td><code>schema</code> path wrong or file missing (relative to <code>apps/api/</code>)</td></tr>
+  <tr><td><code>function uuidv7() does not exist</code></td><td><code>uuidv7()</code> is PostgreSQL 18+; image is older</td></tr>
+  <tr><td><code>foreign key constraint cannot be implemented</code> / <code>incompatible types</code></td><td>FK column type ≠ referenced column type</td></tr>
+  <tr><td><code>Cannot find module 'drizzle-kit'</code> when loading config</td><td>Config file outside the workspace — module resolution walks up from the config</td></tr>
+  <tr><td><code>--env-file=.env</code> file not found</td><td>No <code>.env</code> in <code>apps/api/</code></td></tr>
+  <tr><td>Migration applies twice / conflicts</td><td>Database was <code>push</code>ed before, or <code>drizzle/</code> history rewritten</td></tr>
+</table>
+
+<h2>ID strategy (decide once)</h2>
+<table>
+  <tr><th>Strategy</th><th>Requirement</th><th>Property</th></tr>
+  <tr><td><code>uuidv7()</code> SQL default</td><td>PostgreSQL 18+</td><td>Time-sortable, generated in DB</td></tr>
+  <tr><td>App-generated v7</td><td>v7 library in Node</td><td>Time-sortable, works on any PG</td></tr>
+  <tr><td><code>gen_random_uuid()</code></td><td>PostgreSQL 13+</td><td>Random v4, no ordering</td></tr>
+</table>
+
+<footer>
+  <nav>
+    <a href="../lessons/0001-first-drizzle-migration.html">Lesson 01</a>
+    <a href="../RESOURCES.md">Resources</a>
+    <a href="../MISSION.md">Mission</a>
+  </nav>
+  <p>Compiled from a live audit of the RunMax repo, 2026-10-04. Error texts were reproduced against PostgreSQL 16.15.</p>
+</footer>
+
+</main>
+</body>
+</html>
