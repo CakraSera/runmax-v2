@@ -1,3 +1,15 @@
 node_modules
 dist
+.git
 .env
+.env.*
+!.env.example
+apps/mobile
+learning-records
+lessons
+reference
+**/*.md
+**/.git
+**/coverage
+**/.turbo
+**/.expo
