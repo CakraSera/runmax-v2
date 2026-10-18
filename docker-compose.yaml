@@ -1,7 +1,46 @@
+# Local and single-host deploy. Same shape as production.
+# Usage: cp .env.example .env && docker compose up -d --build
+
 services:
-  database:
-    image: postgres:18.6
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: runmax
+      POSTGRES_PASSWORD: runmax
+      POSTGRES_DB: runmax
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U runmax -d runmax"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     ports:
       - "5432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://runmax:runmax@db:5432/runmax
+      # Add JWT_SECRET, etc. via env_file in real deploys
     env_file:
       - path: .env
+        required: false
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  pgdata:
